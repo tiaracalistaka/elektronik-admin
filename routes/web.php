@@ -13,6 +13,7 @@ Route::post('/logout', [LoginController::class, 'destroy'])->name('logout');
 // Protected routes
 Route::middleware(['auth'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+    Route::get('/dashboard/report/produk-penjualan', [DashboardController::class, 'exportProdukPenjualan'])->name('dashboard.report.produk-penjualan');
     Route::get('/produk', [ProdukController::class, 'index'])->name('produk');
     Route::post('/produk', [ProdukController::class, 'store']);
     Route::put('/produk/{produk}', [ProdukController::class, 'update']);

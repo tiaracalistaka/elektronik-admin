@@ -2,10 +2,10 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Kategori;
 use App\Models\Penjualan;
 use App\Models\Produk;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 
 class DashboardController extends Controller
 {
@@ -29,27 +29,30 @@ class DashboardController extends Controller
             for ($i = 3; $i >= 0; $i--) {
                 $weekStart = now()->subWeeks($i)->startOfWeek();
                 $weekEnd = now()->subWeeks($i)->endOfWeek();
-                $labels[] = 'Mg ' . ($i + 1);
+                $labels[] = 'Mg '.($i + 1);
                 $data[] = (int) Penjualan::where('status', 'completed')
                     ->whereBetween('created_at', [$weekStart, $weekEnd])
                     ->sum('total_harga');
             }
         } else {
             for ($i = 5; $i >= 0; $i--) {
-                $month = now()->subMonths($i)->format('Y-m');
-                $labels[] = now()->subMonths($i)->locale('id')->monthName;
+                $month = now()->subMonths($i);
+                $labels[] = $month->locale('id')->monthName;
                 $data[] = (int) Penjualan::where('status', 'completed')
-                    ->whereRaw("DATE_FORMAT(created_at, '%Y-%m') = ?", [$month])
+                    ->whereBetween('created_at', [
+                        $month->copy()->startOfMonth(),
+                        $month->copy()->endOfMonth(),
+                    ])
                     ->sum('total_harga');
             }
         }
 
         $produkPenjualan = Produk::with('kategori')
-            ->withCount(['penjalanans as total_terjual' => fn($q) => $q->where('status', 'completed')])
-            ->whereHas('penjalanans', fn($q) => $q->where('status', 'completed'))
+            ->withSum(['penjalanans as total_terjual' => fn ($q) => $q->where('status', 'completed')], 'jumlah')
+            ->whereHas('penjalanans', fn ($q) => $q->where('status', 'completed'))
             ->orderByDesc('total_terjual')
             ->get(['id', 'nama', 'kategori_id'])
-            ->map(fn($p) => [
+            ->map(fn ($p) => [
                 'nama' => $p->nama,
                 'kategori' => $p->kategori->nama ?? '-',
                 'terjual' => (int) $p->total_terjual,
@@ -61,6 +64,64 @@ class DashboardController extends Controller
             'chartData' => $data,
             'produkPenjualan' => $produkPenjualan,
             'periode' => $periode,
+        ]);
+    }
+
+    public function exportProdukPenjualan()
+    {
+        $fileName = 'laporan-penjualan-produk-'.now()->format('Y-m-d').'.csv';
+
+        $produks = Produk::query()
+            ->leftJoin('kategori', 'kategori.id', '=', 'produk.kategori_id')
+            ->leftJoin('penjualan', function ($join) {
+                $join->on('penjualan.produk_id', '=', 'produk.id')
+                    ->where('penjualan.status', '=', 'completed');
+            })
+            ->selectRaw('
+                produk.nama,
+                kategori.nama as kategori,
+                produk.harga,
+                COALESCE(SUM(penjualan.jumlah), 0) as total_terjual,
+                COALESCE(SUM(penjualan.total_harga), 0) as total_pendapatan,
+                MAX(penjualan.created_at) as terakhir_terjual
+            ')
+            ->groupBy('produk.id', 'produk.nama', 'kategori.nama', 'produk.harga')
+            ->orderByDesc('total_pendapatan')
+            ->orderBy('produk.nama')
+            ->get();
+
+        return response()->streamDownload(function () use ($produks) {
+            $handle = fopen('php://output', 'w');
+
+            if ($handle === false) {
+                return;
+            }
+
+            fputcsv($handle, [
+                'Produk',
+                'Kategori',
+                'Harga Satuan',
+                'Total Terjual',
+                'Total Pendapatan',
+                'Terakhir Terjual',
+            ]);
+
+            foreach ($produks as $produk) {
+                fputcsv($handle, [
+                    $produk->nama,
+                    $produk->kategori ?? '-',
+                    (int) $produk->harga,
+                    (int) $produk->total_terjual,
+                    (int) $produk->total_pendapatan,
+                    $produk->terakhir_terjual !== null
+                        ? Carbon::parse($produk->terakhir_terjual)->format('Y-m-d H:i:s')
+                        : '-',
+                ]);
+            }
+
+            fclose($handle);
+        }, $fileName, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
     }
 }

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { Head } from '@inertiajs/vue3';
-import { usePage } from '@inertiajs/vue3';
+import { Head, usePage } from '@inertiajs/vue3';
+import { router } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import { Pencil, Trash2, Plus, Package } from '@lucide/vue';
 import { Input } from '@/components/ui/input';
@@ -94,7 +94,7 @@ const submitAdd = () => {
     if (form.value.deskripsi) formData.append('deskripsi', form.value.deskripsi);
     formData.append('stok', String(form.value.stok));
 
-    window.Inertia.post('/produk', Object.fromEntries(formData), {
+    router.post('/produk', Object.fromEntries(formData), {
         onSuccess: () => { showAddDialog.value = false; },
     });
 };
@@ -110,13 +110,13 @@ const submitEdit = () => {
     if (form.value.deskripsi) formData.append('deskripsi', form.value.deskripsi);
     formData.append('stok', String(form.value.stok));
 
-    window.Inertia.post(`/produk/${selectedProduk.value.id}`, Object.fromEntries(formData), {
+    router.post(`/produk/${selectedProduk.value.id}`, Object.fromEntries(formData), {
         onSuccess: () => { showEditDialog.value = false; },
     });
 };
 
 const submitDelete = () => {
-    window.Inertia.post(`/produk/${selectedProduk.value.id}`, { _method: 'DELETE' }, {
+    router.post(`/produk/${selectedProduk.value.id}`, { _method: 'DELETE' }, {
         onSuccess: () => { showDeleteDialog.value = false; },
     });
 };
